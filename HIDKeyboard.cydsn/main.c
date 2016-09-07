@@ -14,8 +14,6 @@
 
 #include <device.h>
 
-typedef uint8(*keyReadCallback)(void);
-
 #define EVER (;;)
 #define LSHIFT 0x02 
 #define ENTER 0x28 
@@ -23,11 +21,17 @@ typedef uint8(*keyReadCallback)(void);
 #define TAB 0x2B
 #define CTRL 0x01 // 0xE0
 #define ALT 0x04 // 0xE2
-#define NO_KEY 0x00
+#define NO_KEY {0x00,NULL}
 
 #define NUMBER_OF_KEYS 26
 #define NUMBER_OF_KEY_ROWS 5
 #define NUMBER_OF_KEY_COLS 7
+
+typedef uint8(*keyReadCallback)(void);
+typedef struct {
+    uint8_t character;
+    keyReadCallback callback;
+} layoutData;
 
 void Send_To_HOST (void);
 void Receive_From_HOST (void);
@@ -37,22 +41,12 @@ uint8 Key_Needs_Shift(char key);
 /* External variable where OUT Report data is stored */
 extern uint8 USBFS_1_DEVICE0_CONFIGURATION0_INTERFACE0_ALTERNATE0_HID_OUT_BUF[USBFS_1_DEVICE0_CONFIGURATION0_INTERFACE0_ALTERNATE0_HID_OUT_BUF_SIZE];
 
-/// The layout of your DIYGamingPad
-const uint8 Keypad_Layout[NUMBER_OF_KEY_ROWS][NUMBER_OF_KEY_COLS] = {
-    {'0', '1', '2', '3', '4', '5', NO_KEY},
-    {TAB, 'q', 'w', 'e', 'r', 't', NO_KEY},
-    {LSHIFT, 'a', 's', 'd', 'f', 'g', NO_KEY},
-    {NO_KEY, 'z', 'x', 'c', 'v', 'b', NO_KEY},
-    {NO_KEY, NO_KEY, NO_KEY, NO_KEY, ALT, ENTER, CTRL}
-};
-
-/// the callbacks for each key in the keypad
-keyReadCallback Read_Keypad[NUMBER_OF_KEY_ROWS][NUMBER_OF_KEY_COLS] = {
-    { Key_1_Read, Key_2_Read, Key_3_Read, Key_4_Read, Key_5_Read, Key_6_Read, NULL },
-    { Key_7_Read, Key_8_Read, Key_9_Read, Key_10_Read, Key_11_Read, Key_12_Read, NULL },
-    { Key_13_Read, Key_14_Read, Key_15_Read, Key_16_Read, Key_17_Read, Key_18_Read, NULL },
-    { NULL, Key_19_Read, Key_20_Read, Key_21_Read, Key_22_Read, Key_23_Read, NULL },
-    { NULL, NULL, NULL, NULL, Key_24_Read, Key_25_Read, Key_26_Read },
+layoutData Keypad_Layout[NUMBER_OF_KEY_ROWS][NUMBER_OF_KEY_COLS] = {
+    {{'0',Key_1_Read},       {'1',Key_2_Read},   {'2',Key_3_Read},   {'3',Key_4_Read},   {'4',Key_5_Read},   NO_KEY,                 NO_KEY},
+    {{TAB,Key_6_Read},       {'q',Key_7_Read},   {'w',Key_8_Read},   {'e',Key_9_Read},   {'r',Key_10_Read},  {'t',Key_11_Read},      NO_KEY},
+    {{LSHIFT,Key_12_Read},   {'a',Key_13_Read},  {'s',Key_14_Read},  {'d',Key_15_Read},  {'f',Key_16_Read},  {'g',Key_17_Read},      NO_KEY},
+    {NO_KEY,                 {'z',Key_18_Read},  {'x',Key_19_Read},  {'c',Key_20_Read},  {'v',Key_21_Read},  {'b',Key_22_Read},      NO_KEY},
+    {NO_KEY,                 NO_KEY,             NO_KEY,             NO_KEY,             {ALT,Key_23_Read},  {ENTER,Key_24_Read},    {CTRL,Key_25_Read}}
 };
 
 // Creates a Scan Code Look Up Table for the various ASCII values
@@ -118,17 +112,17 @@ void Send_To_HOST(void)
     Keyboard_Data[0] = 0x00; 
     for (row=0; row<NUMBER_OF_KEY_ROWS; row++) {
         for (col=0; col<NUMBER_OF_KEY_COLS; col++) {
-            keypadKey = Keypad_Layout[row][col];
-            if (Key_Is_Function_Modifier(keypadKey) && Read_Keypad[row][col]() == 0) {
+            keypadKey = Keypad_Layout[row][col].character;
+            if (Key_Is_Function_Modifier(keypadKey) && Keypad_Layout[row][col].callback != NULL && Keypad_Layout[row][col].callback() == 0) {
 				Keyboard_Data[0] = keypadKey; 
             }
         }
     }
     for (row=0; row<NUMBER_OF_KEY_ROWS; row++) {
         for (col=0; col<NUMBER_OF_KEY_COLS; col++) {
-            keypadKey = Keypad_Layout[row][col];
+            keypadKey = Keypad_Layout[row][col].character;
             if (!Key_Is_Function_Modifier(keypadKey)) {
-                if (Read_Keypad[row][col] != NULL && Read_Keypad[row][col]() == 0) {
+                if (Keypad_Layout[row][col].callback != NULL && Keypad_Layout[row][col].callback() == 0) {
                     DBG_LED_Write(DBG_LED_Read());
                     if (keypadKey == ENTER || keypadKey == TAB) {
     				    Keyboard_Data[2] = keypadKey; 
